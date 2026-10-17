@@ -2284,6 +2284,11 @@ func (s *Server) handleSmartContext(ctx context.Context, req mcp.CallToolRequest
 	if graded {
 		result["context_manifest"] = s.buildContextManifest(
 			ctx, relevantSymbols, outlineCandidates, tokenBudget)
+		// The flat branch above is skipped in graded mode, so book the
+		// manifest's embedded source here instead; never both.
+		if mani, ok := result["context_manifest"].(map[string]any); ok {
+			pending = append(pending, s.manifestSavings(ctx, mani, "smart_context")...)
+		}
 	}
 
 	// 5b. Include cross-repo dependencies when in multi-repo mode.

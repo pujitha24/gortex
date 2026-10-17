@@ -485,3 +485,40 @@ func (s *Server) estimateFlatTokens(ctx context.Context, syms []*graph.Node) int
 	}
 	return total
 }
+
+// manifestSavings lowers a built context manifest into savings observations:
+// one per entry that shipped source, with the whole containing file as the
+// baseline. It runs after the build, in the one caller that books the
+// manifest as smart_context, because buildContextManifest is shared with
+// context_closure and explore, which are booked through the retrieval path.
+func (s *Server) manifestSavings(ctx context.Context, manifest map[string]any, tool string) []pendingSavings {
+	entries, _ := manifest["entries"].([]map[string]any)
+	var pending []pendingSavings
+	for _, e := range entries {
+		src, _ := e["source"].(string)
+		id, _ := e["id"].(string)
+		if src == "" || id == "" {
+			continue
+		}
+		n := s.engineFor(ctx).GetSymbol(id)
+		if n == nil || n.StartLine <= 0 || n.EndLine <= 0 {
+			continue
+		}
+		absPath, err := s.resolveNodePath(ctx, n)
+		if err != nil {
+			continue
+		}
+		_, _, totalFileChars, err := s.readLinesForCtx(ctx, absPath, n.StartLine, n.EndLine, 0)
+		if err != nil {
+			continue
+		}
+		pending = append(pending, pendingSavings{
+			node:     n,
+			absPath:  absPath,
+			tool:     tool,
+			returned: tokens.CachedCountInt64(src),
+			fullFile: int64(tokens.EstimateFromSample(totalFileChars, src)),
+		})
+	}
+	return pending
+}

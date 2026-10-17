@@ -104,3 +104,22 @@ func textOfResult(t *testing.T, res *mcplib.CallToolResult) string {
 	t.Fatal("tool result has no text content")
 	return ""
 }
+
+// TestGradedSmartContextRecordsSavings pins that fidelity:"graded" books the
+// source its manifest embeds. The flat branch is gated on !graded, so before
+// the manifest was booked a graded call recorded nothing.
+func TestGradedSmartContextRecordsSavings(t *testing.T) {
+	srv, _, _ := newSingleRepoServer(t)
+	ctx := context.Background()
+
+	store, err := savings.Open("")
+	require.NoError(t, err)
+	srv.InitSavings(store, "")
+
+	before := srv.tokenStats.snapshot()["calls_counted"].(int64)
+	res := callToolByName(t, srv, ctx, "smart_context", map[string]any{"task": "Hello", "fidelity": "graded"})
+	require.False(t, res.IsError, "graded smart_context must succeed: %s", textOfResult(t, res))
+	require.Contains(t, textOfResult(t, res), "context_manifest")
+	require.Greater(t, srv.tokenStats.snapshot()["calls_counted"].(int64), before,
+		"graded smart_context must record a savings observation")
+}
